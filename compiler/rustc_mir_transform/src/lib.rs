@@ -219,6 +219,7 @@ pub fn provide(providers: &mut Providers) {
         mir_for_ctfe,
         mir_coroutine_witnesses: coroutine::mir_coroutine_witnesses,
         optimized_mir,
+        per_instance_mir: |_tcx, _instance| None,
         check_liveness: liveness::check_liveness,
         is_mir_available,
         is_ctfe_mir_available: is_mir_available,

@@ -721,7 +721,14 @@ pub fn codegen_crate<B: ExtraBackendMethods>(
         None
     };
 
-    let ongoing_codegen = start_async_codegen(backend.clone(), tcx, target_cpu, allocator_module);
+    // Grab any extra modules the backend wants to smuggle into the program.
+    // DO NOT SUBMIT, TODO: consider _not_ asking the backend for this.
+    // It makes sense if we like Valen hooking into the LLVM backend, but it's
+    // unclear whether we like that.
+    let extra_modules = backend.fill_extra_modules(tcx);
+
+    let ongoing_codegen =
+        start_async_codegen(backend.clone(), tcx, target_cpu, allocator_module, extra_modules);
 
     // For better throughput during parallel processing by LLVM, we used to sort
     // CGUs largest to smallest. This would lead to better thread utilization

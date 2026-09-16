@@ -173,4 +173,11 @@ pub trait ExtraBackendMethods:
     fn supports_parallel(&self) -> bool {
         true
     }
+
+    /// Contribute extra, already-filled modules to the codegen pipeline.
+    ///
+    /// Defaults to empty, no extra modules.
+    fn fill_extra_modules<'tcx>(&self, _tcx: TyCtxt<'tcx>) -> Vec<ModuleCodegen<Self::Module>> {
+        Vec::new()
+    }
 }

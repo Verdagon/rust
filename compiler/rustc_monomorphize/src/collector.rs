@@ -1309,8 +1309,11 @@ fn collect_items_of_instance<'tcx>(
     instance: Instance<'tcx>,
     mode: CollectionMode,
 ) -> Result<(MonoItems<'tcx>, MonoItems<'tcx>), NormalizationErrorInMono> {
+    // Consult the `per_instance_mir` query for an alternative MIR for this Instance, else
+    // use the MIR that came out of ????
+    let body = tcx.per_instance_mir(instance).unwrap_or_else(|| tcx.instance_mir(instance.def));
+
     // This item is getting monomorphized, do mono-time checks.
-    let body = tcx.instance_mir(instance.def);
     // Plenty of code paths later assume that everything can be normalized. So we have to check
     // normalization first.
     // We choose to emit the error outside to provide helpful diagnostics.

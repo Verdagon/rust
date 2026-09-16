@@ -431,6 +431,7 @@ pub(crate) fn start_async_codegen<B: ExtraBackendMethods>(
     tcx: TyCtxt<'_>,
     target_cpu: String,
     allocator_module: Option<ModuleCodegen<B::Module>>,
+    extra_modules: Vec<ModuleCodegen<B::Module>>,
 ) -> OngoingCodegen<B> {
     let (coordinator_send, coordinator_receive) = channel();
 
@@ -455,6 +456,7 @@ pub(crate) fn start_async_codegen<B: ExtraBackendMethods>(
         Arc::new(regular_config),
         Arc::new(allocator_config),
         allocator_module,
+        extra_modules,
         coordinator_send.clone(),
     );
 
@@ -1246,6 +1248,7 @@ fn start_executing_work<B: ExtraBackendMethods>(
     regular_config: Arc<ModuleConfig>,
     allocator_config: Arc<ModuleConfig>,
     allocator_module: Option<ModuleCodegen<B::Module>>,
+    extra_modules: Vec<ModuleCodegen<B::Module>>,
     coordinator_send: Sender<Message<B>>,
 ) -> thread::JoinHandle<Result<CompiledModules, ()>> {
     let sess = tcx.sess;
@@ -1508,6 +1511,22 @@ fn start_executing_work<B: ExtraBackendMethods>(
             None
         });
 
+        // Start optimizing any extra modules introduced by external tools.
+        let mut compiled_extra_modules: Vec<CompiledModule> = Vec::new();
+        for extra_module in extra_modules {
+            match execute_optimize_work_item(&cgcx, extra_module) {
+                WorkItemResult::Finished(compiled_module) => {
+                    compiled_extra_modules.push(compiled_module);
+                }
+                WorkItemResult::NeedsFatLto(fat_lto_input) => {
+                    needs_fat_lto.push(fat_lto_input);
+                }
+                WorkItemResult::NeedsThinLto(name, thin_buffer) => {
+                    needs_thin_lto.push((name, thin_buffer));
+                }
+            }
+        }
+
         // Run the message loop while there's still anything that needs message
         // processing. Note that as soon as codegen is aborted we simply want to
         // wait for all existing work to finish, so many of the conditions here
@@ -1754,6 +1773,9 @@ fn start_executing_work<B: ExtraBackendMethods>(
                 lto_import_only_modules,
             ));
         }
+
+        // Include any extra modules introduced by external tools.
+        compiled_modules.extend(compiled_extra_modules);
 
         // Regardless of what order these modules completed in, report them to
         // the backend in the same order every time to ensure that we're handing

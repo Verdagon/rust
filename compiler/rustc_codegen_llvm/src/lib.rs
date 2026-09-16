@@ -77,6 +77,19 @@ rustc_fluent_macro::fluent_messages! { "../messages.ftl" }
 
 pub(crate) use macros::TryFromU32;
 
+/// Hook for an external tool to introduce extra modules into rustc's
+/// codegen/optimization/linking pipeline.
+pub type FillExtraModulesHook = for<'tcx> fn(TyCtxt<'tcx>) -> Vec<ModuleCodegen<ModuleLlvm>>;
+
+static FILL_EXTRA_MODULES_HOOK: std::sync::OnceLock<FillExtraModulesHook> =
+    std::sync::OnceLock::new();
+
+/// Installs the hook that to introduce extra modules into rustc's
+/// codegen/optimization/linking pipeline.
+pub fn set_fill_extra_modules_hook(hook: FillExtraModulesHook) {
+    let _ = FILL_EXTRA_MODULES_HOOK.set(hook);
+}
+
 #[derive(Clone)]
 pub struct LlvmCodegenBackend(());
 
@@ -146,6 +159,15 @@ impl ExtraBackendMethods for LlvmCodegenBackend {
             let _profiler = TimeTraceProfiler::new(time_trace);
             f()
         })
+    }
+
+    fn fill_extra_modules<'tcx>(&self, tcx: TyCtxt<'tcx>) -> Vec<ModuleCodegen<ModuleLlvm>> {
+        // Ask the external tool for extra modules to feed into rustc's
+        // codegen/optimization/linking pipeline.
+        match FILL_EXTRA_MODULES_HOOK.get() {
+            Some(hook) => hook(tcx),
+            None => Vec::new(),
+        }
     }
 }
 
@@ -405,7 +427,8 @@ unsafe impl Send for ModuleLlvm {}
 unsafe impl Sync for ModuleLlvm {}
 
 impl ModuleLlvm {
-    fn new(tcx: TyCtxt<'_>, mod_name: &str) -> Self {
+    // DO NOT SUBMIT made `pub`
+    pub fn new(tcx: TyCtxt<'_>, mod_name: &str) -> Self {
         unsafe {
             let llcx = llvm::LLVMContextCreate();
             llvm::LLVMContextSetDiscardValueNames(llcx, tcx.sess.fewer_names().to_llvm_bool());
@@ -416,6 +439,24 @@ impl ModuleLlvm {
                 tm: ManuallyDrop::new(create_target_machine(tcx, mod_name)),
             }
         }
+    }
+
+    // DO NOT SUBMIT, exposed this.
+    /// Returns a pointer to the module's LLVMContext, so an external
+    /// tool can codegen into our LLVM context.
+    /// This context is still owned by rustc, so callers must not call
+    /// `LLVMContextDispose` on the returned pointer.
+    pub fn llcx_raw_mut(&mut self) -> *mut std::ffi::c_void {
+        self.llcx as *mut _ as *mut std::ffi::c_void
+    }
+
+    // DO NOT SUBMIT, exposed this.
+    /// Returns a raw pointer to the underlying LLVMModule, so an external
+    /// tool can codegen into it.
+    /// This context is still owned by rustc, so callers must not call
+    /// `LLVMContextDispose` on the returned pointer.
+    pub fn llmod_raw(&mut self) -> *mut std::ffi::c_void {
+        self.llmod_raw as *mut std::ffi::c_void
     }
 
     fn new_metadata(tcx: TyCtxt<'_>, mod_name: &str) -> Self {

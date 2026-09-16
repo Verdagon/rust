@@ -749,6 +749,17 @@ rustc_queries! {
         separate_provide_extern
     }
 
+    /// Hook to call out to an external tool to get the alternative MIR to use for a
+    /// particular Instance.
+    ///
+    /// The default provider returns None, in which case we instantiate the MIR that
+    /// came out of typeck/dropck, using `instance_mir` like normal.
+    ///
+    /// If Some, then mono proceeds, using that alternative MIR.
+    query per_instance_mir(key: ty::Instance<'tcx>) -> Option<&'tcx mir::Body<'tcx>> {
+        desc { "computing per-Instance MIR for `{:?}`", key }
+    }
+
     /// Checks for the nearest `#[coverage(off)]` or `#[coverage(on)]` on
     /// this def and any enclosing defs, up to the crate root.
     ///
